@@ -3,12 +3,11 @@ import logging
 import matplotlib.pyplot as plt
 import os
 from utils import good_point_init, random_point_init, deb_feasible_compare
-from math import gamma, sin, pi, pow
+from math import gamma, sin, pi
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s  %(filename)s : %(levelname)s  %(message)s',
                     datefmt='%Y-%m-%d %A %H:%M:%S')
-
 """
  Flower pollenation algorithm (FPA), or flower algorithm
  花朵授粉算法
@@ -16,13 +15,14 @@ logging.basicConfig(level=logging.INFO,
 """
 
 class FlowerPollinationAlgorithm(object):
-    def __init__(self, obj_fun, n_dim, less_cons=[], lb=None, ub=None, num_popu=100, N_iter=1000,
+    def __init__(self, obj_fun, n_dim, less_cons=[], obj_fun_and_less_cons=None, lb=None, ub=None, num_popu=100, N_iter=1000,
                  p=0.8, int_method='good', integer_op=False, coef=0.01, name='fpa'):
         """
         花朵授粉算法
         :param obj_fun: 目标函数，极小化这个函数
         :param n_dim: 自变量维度
         :param less_cons: 不等式约束列表，f(x) <= 0 for f in less_cons
+        :param obj_fun_and_less_cons: 另一种定义模型的方式，可以减少计算量，目标函数和约束定义到一个列表里
         :param lb: 自变量下界约束
         :param ub: 自变量上界约束
         :param num_popu: 初始种群个数
@@ -30,11 +30,13 @@ class FlowerPollinationAlgorithm(object):
         :param p: 自花授粉概率， 1-p为全局授粉概率
         :param int_method: 初始化方式，good: 佳点集方式，否则随机
         :param integer_op: 是否是整数规划，默认False
+        :param coef: levy 飞行的更新系数
         :param name: 模型名字，保存图片会使用这个作为前缀
         """
         self.obj_fun = obj_fun
         self.n_dim = n_dim
         self.less_cons = less_cons
+        self.obj_fun_and_less_cons = obj_fun_and_less_cons
         self.lb = lb
         self.ub = ub
         self.num_popu = num_popu
@@ -64,6 +66,7 @@ class FlowerPollinationAlgorithm(object):
         self.f_min_list = []
         self.x_best_list = []
         self.diversity_list = []
+        self.stored = None
 
     def _diversity(self):
         center = np.mean(self.populations, axis=0)
@@ -98,11 +101,12 @@ class FlowerPollinationAlgorithm(object):
     def train(self):
         logging.info('fpa begin to train...')
         _flag = False
-        idx, _ = deb_feasible_compare(self.populations, self.obj_fun, [], self.less_cons)
+        idx, _ = deb_feasible_compare(self.populations, self.obj_fun, [], self.less_cons, self.obj_fun_and_less_cons)
         if _:
             _flag = True
         x_best = self.populations[idx]
         self.x_best_list.append(x_best)
+        self.stored = self.obj_fun_and_less_cons(x_best)
         f_min = self.obj_fun(x_best)
 
         # 开始按照t迭代
@@ -128,17 +132,18 @@ class FlowerPollinationAlgorithm(object):
                     x_new = self.populations[i] + epsilon * (self.populations[JK[0]] - self.populations[JK[1]])
                     x_new = self._bound(x_new)
                 tmp = [self.populations[i], x_new]
-                idx, _ = deb_feasible_compare(tmp, self.obj_fun, [], self.less_cons)
+                idx, _ = deb_feasible_compare(tmp, self.obj_fun, [], self.less_cons, self.obj_fun_and_less_cons)
                 if idx == 1:
                     # 新解更优
                     self.populations[i] = x_new
                     tmp = [x_best, x_new]
-                    idx, _ = deb_feasible_compare(tmp, self.obj_fun, [], self.less_cons)
+                    idx, _ = deb_feasible_compare(tmp, self.obj_fun, [], self.less_cons, self.obj_fun_and_less_cons)
                     if _:
                         _flag = True
                     if idx == 1:
                         x_best = x_new
                         self.x_best_list.append(x_best)
+                        self.stored = self.obj_fun_and_less_cons(x_best)
                         f_min = self.obj_fun(x_best)
 
         logging.info('最终是否找到可行解{}, 最优函数值{}'.format(_flag, f_min))

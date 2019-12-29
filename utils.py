@@ -82,7 +82,7 @@ def random_point_init(num_of_points: int, lb: np.ndarray, ub: np.ndarray) -> np.
     return init_points
 
 
-def deb_feasible_compare(xs, obj_fun, equ_cons, less_cons):
+def deb_feasible_compare(xs, obj_fun, equ_cons, less_cons, obj_fun_and_less_cons=None):
     """
     对于极小化问题，使用deb 可行性比较发判断解的优先级
     :param xs: 一系列待确定的解
@@ -92,24 +92,41 @@ def deb_feasible_compare(xs, obj_fun, equ_cons, less_cons):
     :return: xs中最优解的下标
     """
     delta = 1e-4
-    obj_vals = [obj_fun(x) for x in xs]
-    max_val = max(obj_vals)
     # 约束违反度
     phis = []
     _comparator = []
-    _flag = False
-    for i, x in enumerate(xs):
-        eq_phi = sum([max(0, abs(equ_con(x)) - delta) for equ_con in equ_cons])
-        less_phi = sum([max(0, less_con(x)) for less_con in less_cons])
-        phi = eq_phi + less_phi
-        phis.append(phi)
-        if phi < delta:
-            # 可行解
-            _flag = True
-            _comparator.append(obj_vals[i])
-        else:
-            # 不可行解一定差于可行解，固定不可行解目标函数值为max_val，这样比较他们的约束违反度即可
-            _comparator.append(max_val + phi)
+    if obj_fun_and_less_cons is None:
+        obj_vals = [obj_fun(x) for x in xs]
+        max_val = max(obj_vals)
+        _flag = False
+        for i, x in enumerate(xs):
+            eq_phi = sum([max(0, abs(equ_con(x)) - delta) for equ_con in equ_cons])
+            less_phi = sum([max(0, less_con(x)) for less_con in less_cons])
+            phi = eq_phi + less_phi
+            phis.append(phi)
+            if phi < delta:
+                # 可行解
+                _flag = True
+                _comparator.append(obj_vals[i])
+            else:
+                # 不可行解一定差于可行解，固定不可行解目标函数值为max_val，这样比较他们的约束违反度即可
+                _comparator.append(max_val + phi)
+    else:
+        obj_and_cons_vals = [obj_fun_and_less_cons(x) for x in xs]
+        obj_and_cons_vals = np.asarray(obj_and_cons_vals)
+        max_val = max(obj_and_cons_vals[:, 0])
+        _flag = False
+
+        for i, x in enumerate(xs):
+            phi = sum([max(0, v) for v in obj_and_cons_vals[i, 1:]])
+            phis.append(phi)
+            if phi < delta:
+                # 可行解
+                _flag = True
+                _comparator.append(obj_and_cons_vals[i, 0])
+            else:
+                # 不可行解一定差于可行解，固定不可行解目标函数值为max_val，这样比较他们的约束违反度即可
+                _comparator.append(max_val + phi)
 
     indices = list(range(len(xs)))
     sorted_indices = sorted(indices, key=lambda i: _comparator[i])
