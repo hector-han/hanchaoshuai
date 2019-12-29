@@ -63,6 +63,25 @@ def good_point_init(num_of_points: int, lb: np.ndarray, ub: np.ndarray) -> np.nd
     return init_points
 
 
+def random_point_init(num_of_points: int, lb: np.ndarray, ub: np.ndarray) -> np.ndarray:
+    """
+    使用佳点集，在[lb, yb]中产生初始点
+    :param num_of_points: 要产生的点的个数
+    :param lb: 区域的下边界，如[0,0,0]
+    :param ub: 区域的上边界, 如[1,1,1]
+    :return: matrix, 每行是一个点，共num_of_points行
+    """
+    assert len(lb.shape) == 1 and lb.shape == ub.shape
+    _dims = lb.shape[0]
+    for i in range(_dims):
+        assert lb[i] < ub[i]
+    scale = ub - lb
+    init_points = np.random.random([num_of_points, _dims])
+    for i in range(num_of_points):
+        init_points[i] = lb + init_points[i] * scale
+    return init_points
+
+
 def deb_feasible_compare(xs, obj_fun, equ_cons, less_cons):
     """
     对于极小化问题，使用deb 可行性比较发判断解的优先级
@@ -78,6 +97,7 @@ def deb_feasible_compare(xs, obj_fun, equ_cons, less_cons):
     # 约束违反度
     phis = []
     _comparator = []
+    _flag = False
     for i, x in enumerate(xs):
         eq_phi = sum([max(0, abs(equ_con(x)) - delta) for equ_con in equ_cons])
         less_phi = sum([max(0, less_con(x)) for less_con in less_cons])
@@ -85,6 +105,7 @@ def deb_feasible_compare(xs, obj_fun, equ_cons, less_cons):
         phis.append(phi)
         if phi < delta:
             # 可行解
+            _flag = True
             _comparator.append(obj_vals[i])
         else:
             # 不可行解一定差于可行解，固定不可行解目标函数值为max_val，这样比较他们的约束违反度即可
@@ -92,7 +113,7 @@ def deb_feasible_compare(xs, obj_fun, equ_cons, less_cons):
 
     indices = list(range(len(xs)))
     sorted_indices = sorted(indices, key=lambda i: _comparator[i])
-    return sorted_indices[0]
+    return sorted_indices[0], _flag
 
 
 
