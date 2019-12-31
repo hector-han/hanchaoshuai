@@ -14,15 +14,14 @@ logging.basicConfig(level=logging.INFO,
  
 """
 
+
 class FlowerPollinationAlgorithm(object):
-    def __init__(self, obj_fun, n_dim, less_cons=[], obj_fun_and_less_cons=None, lb=None, ub=None, num_popu=100, N_iter=1000,
+    def __init__(self, n_dim, obj_fun_and_less_cons, transformer, lb=None, ub=None, num_popu=100, N_iter=1000,
                  p=0.8, int_method='good', integer_op=False, coef=0.01, name='fpa'):
         """
-        花朵授粉算法
-        :param obj_fun: 目标函数，极小化这个函数
-        :param n_dim: 自变量维度
-        :param less_cons: 不等式约束列表，f(x) <= 0 for f in less_cons
-        :param obj_fun_and_less_cons: 另一种定义模型的方式，可以减少计算量，目标函数和约束定义到一个列表里
+        花朵授粉算法, 极小化，且只能解决不等式约束
+        :param obj_fun_and_less_cons: 目标函数和约束定义到一个列表里
+        :param transformer: 对目标函数和约束做变换，比如极大化， 则函数值我-1obj(x). 5-g(x)<=0, 对应g(x)=transformer=5-t
         :param lb: 自变量下界约束
         :param ub: 自变量上界约束
         :param num_popu: 初始种群个数
@@ -33,10 +32,10 @@ class FlowerPollinationAlgorithm(object):
         :param coef: levy 飞行的更新系数
         :param name: 模型名字，保存图片会使用这个作为前缀
         """
-        self.obj_fun = obj_fun
+
         self.n_dim = n_dim
-        self.less_cons = less_cons
         self.obj_fun_and_less_cons = obj_fun_and_less_cons
+        self.transformer = transformer
         self.lb = lb
         self.ub = ub
         self.num_popu = num_popu
@@ -47,32 +46,44 @@ class FlowerPollinationAlgorithm(object):
         self.name = name
 
         if self.lb is not None:
-            init_lb = self.lb
+            self.init_lb = self.lb
         else:
-            init_lb = -1000 * np.ones(n_dim)
+            self.init_lb = -10 * np.ones(n_dim)
         if self.ub is not None:
-            init_ub = self.ub
+            self.init_ub = self.ub
         else:
-            init_ub = 1000 * np.ones(n_dim)
-
+            self.init_ub = 10 * np.ones(n_dim)
+        # 上一代
+        self.populations0 = np.zeros([self.num_popu, self.n_dim])
+        # 这一代
+        self.populations1 = np.zeros([self.num_popu, self.n_dim])
         if int_method == 'good':
-            self.populations = good_point_init(num_popu, init_lb, init_ub)
+            self.populations0 = good_point_init(num_popu, self.init_lb, self.init_ub)
         else:
-            self.populations = random_point_init(num_popu, init_lb, init_ub)
+            self.populations0 = random_point_init(num_popu, self.init_lb, self.init_ub)
 
         if self.integer_op:
-            self.populations = self.populations.astype(np.int64)
-
-        self.f_min_list = []
+            self.populations0 = self.populations0.astype(np.int64)
+            self.populations1 = self.populations1.astype(np.int64)
+        # 花粉最大移动半径
+        self.R = np.linalg.norm(self.init_ub - self.init_lb)
+        self.f_and_cons_list = []
         self.x_best_list = []
         self.diversity_list = []
-        self.stored = None
+        self.different_list = []
+        # 每10代记录下当前种群
+        self.history = []
 
     def _diversity(self):
-        center = np.mean(self.populations, axis=0)
-        tmp = self.populations - center
+        center = np.mean(self.populations0, axis=0)
+        tmp = self.populations0 - center
         part_norm = np.linalg.norm(tmp, axis=1)
         return np.sqrt(np.sum(part_norm ** 2)) / self.num_popu / np.max(part_norm)
+
+    def _different(self):
+        tmp = self.populations1 - self.populations0
+        part_norm = np.linalg.norm(tmp, axis=1)
+        return np.sqrt(np.sum(part_norm ** 2)) / self.num_popu / self.R
 
     def levy(self):
         beta = 3 / 2
@@ -100,21 +111,24 @@ class FlowerPollinationAlgorithm(object):
 
     def train(self):
         logging.info('fpa begin to train...')
+
         _flag = False
-        idx, _ = deb_feasible_compare(self.populations, self.obj_fun, [], self.less_cons, self.obj_fun_and_less_cons)
+        best_opt_idx, best_opt_vals, _ = deb_feasible_compare(self.populations0, self.obj_fun_and_less_cons)
         if _:
             _flag = True
-        x_best = self.populations[idx]
+        x_best = self.populations0[best_opt_idx]
+        self.f_and_cons_list.append(self.transformer(best_opt_vals))
         self.x_best_list.append(x_best)
-        self.stored = self.obj_fun_and_less_cons(x_best)
-        f_min = self.obj_fun(x_best)
+        self.diversity_list.append(self._diversity())
+        self.different_list.append(0.0)
+        self.history.append(self.populations0)
+
+        f_min = best_opt_vals[0]
 
         # 开始按照t迭代
         print_steps = self.N_iter // 10
-        for t in range(self.N_iter):
-            self.f_min_list.append(f_min)
-            self.diversity_list.append(self._diversity())
-            if t % print_steps == 0:
+        for t in range(1, self.N_iter + 1):
+            if t % print_steps == 1:
                 logging.info('t={}, f_min={}'.format(t, f_min))
 
             # 对每一个解迭代
@@ -122,33 +136,43 @@ class FlowerPollinationAlgorithm(object):
                 if np.random.random() > self.p:
                     # levy 飞行， 生物授粉 x_i^{t+1}=x_i^t+ L (x_i^t-gbest)
                     L = self.levy()
-                    dS = L * (self.populations[i] - x_best)
-                    x_new = self.populations[i] + dS
+                    dS = L * (self.populations0[i] - x_best)
+                    x_new = self.populations0[i] + dS
                     x_new = self._bound(x_new)
                 else:
                     # 非生物授粉 x_i^{t+1}+epsilon*(x_j^t-x_k^t)
                     epsilon = np.random.random()
                     JK = np.random.permutation(self.num_popu)
-                    x_new = self.populations[i] + epsilon * (self.populations[JK[0]] - self.populations[JK[1]])
+                    x_new = self.populations0[i] + epsilon * (self.populations0[JK[0]] - self.populations0[JK[1]])
                     x_new = self._bound(x_new)
-                tmp = [self.populations[i], x_new]
-                idx, _ = deb_feasible_compare(tmp, self.obj_fun, [], self.less_cons, self.obj_fun_and_less_cons)
-                if idx == 1:
+                tmp = [self.populations0[i], x_new]
+                opt_idx, opt_vals, _ = deb_feasible_compare(tmp, self.obj_fun_and_less_cons)
+                if opt_idx == 1:
                     # 新解更优
-                    self.populations[i] = x_new
+                    self.populations1[i] = x_new
                     tmp = [x_best, x_new]
-                    idx, _ = deb_feasible_compare(tmp, self.obj_fun, [], self.less_cons, self.obj_fun_and_less_cons)
+                    best_opt_idx, best_opt_vals, _ = deb_feasible_compare(tmp, self.obj_fun_and_less_cons)
                     if _:
                         _flag = True
-                    if idx == 1:
+                    if best_opt_idx == 1:
                         x_best = x_new
-                        self.x_best_list.append(x_best)
-                        self.stored = self.obj_fun_and_less_cons(x_best)
-                        f_min = self.obj_fun(x_best)
+                        f_min = best_opt_vals[0]
+                else:
+                    # 保持不变
+                    self.populations1[i] = self.populations0[i]
+
+            # t时刻所有花粉都已经迭代完成，记录数据
+            self.f_and_cons_list.append(self.transformer(best_opt_vals))
+            self.x_best_list.append(x_best)
+            self.different_list.append(self._different())
+
+            self.populations0 = self.populations1
+            self.history.append(self.populations0)
+            self.diversity_list.append(self._diversity())
 
         logging.info('最终是否找到可行解{}, 最优函数值{}'.format(_flag, f_min))
 
-    def save(self, path):
+    def save(self, path, ):
         plt.figure()
         plt.plot(self.f_min_list)
         plt.savefig(os.path.join(path, '{}_f_min.jpg'.format(self.name)))
