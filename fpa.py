@@ -172,7 +172,42 @@ class FlowerPollinationAlgorithm(object):
 
         logging.info('最终是否找到可行解{}, 最优函数值{}'.format(_flag, f_min))
 
-    def save(self, path, ):
+    def save(self, path, axis, ):
+        from matplotlib import cm
+        from matplotlib.ticker import LinearLocator, FormatStrFormatter
+        # 1、画函数图
+        fig = plt.figure()
+        ax = fig.gca(projection='3d')
+        # Make data.
+        num_of_points = 60
+        x_l = self.init_lb[axis[0]]
+        x_u = self.init_ub[axis[0]]
+        x_step = (x_u - x_l) / num_of_points
+        X = np.arange(x_l, x_u + x_step, x_step)
+        y_l = self.init_lb[axis[1]]
+        y_u = self.init_ub[axis[1]]
+        y_step = (y_u - y_l) / num_of_points
+        Y = np.arange(y_l, y_u + y_step, y_step)
+        X, Y = np.meshgrid(X, Y)
+
+        R = np.sqrt(X ** 2 + Y ** 2)
+        Z = np.sin(R)
+
+        # Plot the surface.
+        surf = ax.plot_surface(X, Y, Z, cmap=cm.coolwarm,
+                               linewidth=0, antialiased=False)
+
+        # Customize the z axis.
+        ax.set_zlim(-1.01, 1.01)
+        ax.zaxis.set_major_locator(LinearLocator(10))
+        ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
+
+        # Add a color bar which maps values to colors.
+        fig.colorbar(surf, shrink=0.5, aspect=5)
+
+        plt.show()
+
+
         plt.figure()
         plt.plot(self.f_min_list)
         plt.savefig(os.path.join(path, '{}_f_min.jpg'.format(self.name)))
