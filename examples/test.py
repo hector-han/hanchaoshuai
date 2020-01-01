@@ -28,3 +28,9 @@ ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
 fig.colorbar(surf, shrink=0.5, aspect=5)
 
 plt.show()
+
+fig, ax = plt.subplots()
+line1, = ax.plot([1, 2, 3])
+line2, = ax.plot([3, 2, 1])
+ax.legend((line1, line2), ("line1", "line2"))
+plt.show()

@@ -167,19 +167,21 @@ class FlowerPollinationAlgorithm(object):
             self.different_list.append(self._different())
 
             self.populations0 = self.populations1
-            self.history.append(self.populations0)
+            if t % 10 == 0:
+                self.history.append(self.populations0)
             self.diversity_list.append(self._diversity())
 
         logging.info('最终是否找到可行解{}, 最优函数值{}'.format(_flag, f_min))
 
-    def save(self, path, axis, ):
+    def save(self, path, axis, axis_name, f_and_cons_name):
+        from mpl_toolkits.mplot3d import Axes3D
         from matplotlib import cm
         from matplotlib.ticker import LinearLocator, FormatStrFormatter
         # 1、画函数图
         fig = plt.figure()
         ax = fig.gca(projection='3d')
         # Make data.
-        num_of_points = 60
+        num_of_points = 81
         x_l = self.init_lb[axis[0]]
         x_u = self.init_ub[axis[0]]
         x_step = (x_u - x_l) / num_of_points
@@ -188,38 +190,92 @@ class FlowerPollinationAlgorithm(object):
         y_u = self.init_ub[axis[1]]
         y_step = (y_u - y_l) / num_of_points
         Y = np.arange(y_l, y_u + y_step, y_step)
-        X, Y = np.meshgrid(X, Y)
 
-        R = np.sqrt(X ** 2 + Y ** 2)
-        Z = np.sin(R)
+        if self.integer_op:
+            X = X.astype(np.int64)
+            Y = Y.astype(np.int64)
+            X = np.unique(X)
+            Y = np.unique(Y)
+        X, Y = np.meshgrid(X, Y)
+        s1, s2 = X.shape
+        Z = np.zeros_like(X)
+        for i in range(s1):
+            for j in range(s2):
+                x = np.copy(self.x_best_list[-1])
+                x[axis[0]] = X[i, j]
+                x[axis[1]] = Y[i, j]
+                vals = self.obj_fun_and_less_cons(x)
+                trans = self.transformer(vals)
+                Z[i, j] = trans[0]
 
         # Plot the surface.
         surf = ax.plot_surface(X, Y, Z, cmap=cm.coolwarm,
                                linewidth=0, antialiased=False)
-
+        ax.set_xlabel(axis_name[0])
+        ax.set_ylabel(axis_name[1])
+        ax.set_zlabel('f')
+        ax.view_init(45, 45)
         # Customize the z axis.
-        ax.set_zlim(-1.01, 1.01)
+        # ax.set_zlim(-1.01, 1.01)
         ax.zaxis.set_major_locator(LinearLocator(10))
         ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
+        # plt.show()
+        plt.savefig(os.path.join(path, '{}_fval.jpg'.format(self.name)))
 
-        # Add a color bar which maps values to colors.
-        fig.colorbar(surf, shrink=0.5, aspect=5)
+        # 寻优参数变化曲线
+        fig, ax = plt.subplots()
+        l1, = ax.plot(self.diversity_list)
+        l2, = ax.plot(self.different_list)
+        ax.legend((l1, l2), ("Div", "Dif"))
+        ax.set_xlabel('t')
+        ax.set_ylabel('Div,Dif')
+        plt.savefig(os.path.join(path, '{}_div_dif.jpg'.format(self.name)))
 
-        plt.show()
+        # 目标函数值和约束值的变化
+        f_and_cons_list = np.asarray(self.f_and_cons_list)
+        _min = np.min(f_and_cons_list, axis=0)
+        _max = np.max(f_and_cons_list, axis=0)
+        std_f_and_cons_list = (f_and_cons_list - _min) / (_max - _min)
+        fig, ax = plt.subplots()
+        _, n = f_and_cons_list.shape
+        lines = []
+        for i in range(n):
+            l, = ax.plot(std_f_and_cons_list[:, i])
+            lines.append(l)
 
+        ax.legend(lines, f_and_cons_name)
+        ax.set_xlabel('t')
+        plt.savefig(os.path.join(path, '{}_f_and_cons.jpg'.format(self.name)))
 
-        plt.figure()
-        plt.plot(self.f_min_list)
-        plt.savefig(os.path.join(path, '{}_f_min.jpg'.format(self.name)))
+        _, axes = plt.subplots(3, 2, figsize=(10, 15))
+        mapping = {
+            (0, 0): 0,
+            (0, 1): 10,
+            (1, 0): 30,
+            (1, 1): 50,
+            (2, 0): 80,
+            (2, 1): 100,
+        }
+        for i in range(3):
+            for j in range(2):
+                axes[i][j].contour(X,Y,Z, cmap=cm.coolwarm,antialiased = True, alpha=0.5)
+                t = mapping[(i, j)]
+                points = self.history[t // 10]
+                axes[i][j].scatter(points[:,axis[0]], points[:,axis[1]], c='k')
+                axes[i][j].set_title('t={}'.format(t))
 
-        plt.figure()
-        plt.plot(self.diversity_list)
-        plt.savefig(os.path.join(path, '{}_diversity.jpg'.format(self.name)))
-
-        plt.figure()
-        tmp = np.asarray(self.x_best_list)
-        plt.plot(tmp[:, 0], tmp[:, 1])
-        plt.savefig(os.path.join(path, '{}_x_best.jpg'.format(self.name)))
+        plt.savefig(os.path.join(path, '{}_寻优花粉分布.jpg'.format(self.name)))
+        # plt.plot(self.f_min_list)
+        # plt.savefig(os.path.join(path, '{}_f_min.jpg'.format(self.name)))
+        #
+        # plt.figure()
+        # plt.plot(self.diversity_list)
+        # plt.savefig(os.path.join(path, '{}_diversity.jpg'.format(self.name)))
+        #
+        # plt.figure()
+        # tmp = np.asarray(self.x_best_list)
+        # plt.plot(tmp[:, 0], tmp[:, 1])
+        # plt.savefig(os.path.join(path, '{}_x_best.jpg'.format(self.name)))
 
 
 
