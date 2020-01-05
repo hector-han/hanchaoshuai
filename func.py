@@ -152,7 +152,7 @@ def _denominator(o_b, k_b):
     return denominator
 
 
-def cal_phi_or_T_k(para_c, lambda_c, para_b, lambda_b, o_b, k_b):
+def cal_phi_or_T_k(para_c, lambda_c, para_b, lambda_b, denominator):
     """
     计算故障隔离率 或 平均故障隔离时间，参数都是np.array
     phi_k需要在外边 1-结果
@@ -164,23 +164,23 @@ def cal_phi_or_T_k(para_c, lambda_c, para_b, lambda_b, o_b, k_b):
     :param k_b:
     :return:
     """
-    denominator = _denominator(o_b, k_b)
+    # denominator = _denominator(o_b, k_b)
     part1 = np.sum(np.multiply(para_c, lambda_c)) + np.sum(np.divide(np.multiply(para_b, lambda_b), denominator))
     part2 = np.sum(lambda_c) + np.sum(np.divide(lambda_b, denominator))
 
     return part1 / part2
 
 
-def cal_MTBF_S(lambda_c, lambda_b, o_b, k_b):
+def cal_MTBF_S(lambda_c, lambda_b, denominator):
     """平均故障间隔时间"""
-    denominator = _denominator(o_b, k_b)
+    # denominator = _denominator(o_b, k_b)
     tmp = np.sum(lambda_c) + np.sum(np.divide(lambda_b, denominator))
     return 1 / tmp
 
 
-def cal_MTTR_S(mu_c, T_k_c, lambda_c, mu_b, T_K_b, lambda_b, o_b, k_b):
+def cal_MTTR_S(mu_c, T_k_c, lambda_c, mu_b, T_K_b, lambda_b, denominator):
     """平均修复时间"""
-    denominator = _denominator(o_b, k_b)
+    # denominator = _denominator(o_b, k_b)
     part1 = np.sum((np.divide(1, mu_c) + T_k_c) * lambda_c) + np.sum(np.divide(np.multiply(np.divide(1, mu_b) + T_K_b, lambda_b),
                                                                   denominator))
     part2 = np.sum(lambda_c) + np.sum(np.divide(lambda_b, denominator))
@@ -223,10 +223,13 @@ def _cal_integerate(t_0, lam, m):
     :param m:
     :return:
     """
+    if t_0 < 1e-12:
+        return 1.0
+
     def _inner_func(t):
         part1 = np.exp(-lam * t)
         part2 = np.sum([pow(lam * t, j) / factorial(j) for j in range(m + 1)])
-        return part1 * part2
+        return part1 * part2 / t_0
     result = integrate.quad(_inner_func, 0, t_0)
     return result[0]
 
@@ -235,52 +238,19 @@ def cal_MLDT_S(ht, t_0, lambda_cb, o_cb, m1, m2, m3, n_p, t_p1, t_p2):
     n_cb = len(lambda_cb)
     complex_part = np.zeros(n_cb)
     for i in range(1, n_cb + 1):
-        # t_x = t_0 * (1 - _cal_integerate(t_0, lambda_cb[i-1], m1[i-1]) / t_0)
+        t_x = t_0 * (1 - _cal_integerate(t_0, lambda_cb[i-1], m1[i-1]))
         _lamb = n_p * o_cb[i-1] * lambda_cb[i-1]
         tmp1 = _cal_integerate(t_0, _lamb, m1[i-1])
-        # tmp2 = _cal_integerate(t_x, _lamb, m2[i-1])
+        tmp2 = _cal_integerate(t_x, _lamb, m2[i-1])
         tmp3 = _cal_integerate(t_0, _lamb, m1[i-1] + m2[i-1])
-        # tmp4 = _cal_integerate(t_x, _lamb, m3[i-1])
-        # complex_part[i-1] = t_p1 * (1 - tmp1 / t_0) * (tmp2 / t_x) + \
-        #                   t_p2 * (1 - tmp3 / t_0) * (tmp4 / t_x)
-        complex_part[i-1] = t_p1 * (1 - tmp1 / t_0) + t_p2 * (1 - tmp3 / t_0)
+        tmp4 = _cal_integerate(t_x, _lamb, m3[i-1])
+        complex_part[i-1] = t_p1 * (1 - tmp1) * tmp2 + t_p2 * (1 - tmp3) * tmp4
+        # complex_part[i-1] = t_p1 * (1 - tmp1 / t_0) + t_p2 * (1 - tmp3 / t_0)
     return np.sum(ht * complex_part)
 
 
 def cal_MPMDT_S():
     return 0
-
-def _check_obj_fun(x):
-    """
-    定义目标函数
-    :param x: 自变量 3+3*8 = 27维的向量，表示3个o_i, 8个m1_i, m2_i, m3_i
-    :return: 目标函数值
-    """
-    nb = 3
-    o_b = x[0:nb]
-    m1 = x[nb:nb+8]
-    m2 = x[nb+8:nb+16]
-    m3 = x[nb+16:nb+24]
-
-    R_ts = cal_R_t(t_s, lambda_c, lambda_b, o_b, k_b)
-    M_ts = cal_M_t(t_s, mu_c, mu_b, o_b)
-    Phi_k = 1 - cal_phi_or_T_k(1 - phi_k_c, lambda_c, 1 - phi_k_b, lambda_b, o_b, k_b)
-    D_t = cal_D_t(R_ts, Phi_k, M_ts)
-
-    MTBF = cal_MTBF_S(lambda_c, lambda_b, o_b, k_b)
-    MTTR = cal_MTTR_S(mu_c, T_K_c, lambda_c, mu_b, T_K_b, lambda_b, o_b, k_b)
-    ft = cal_f_cb(t_s, lambda_cb)
-    ht = cal_ht(ft)
-    MMDT = cal_MMDT_S(t_d, ft[c_idx], mu_c, ft[b_idx], mu_b, o_b)
-    MLDT = cal_MLDT_S(ht, t_0, lambda_cb, np.concatenate([o_cb_bound[c_idx], o_b]),
-                      m1, m2, m3, n_p, t_p1, t_p2)
-    MPMDT = cal_MPMDT_S()
-    P_ORS = t_d / (t_d + MMDT + MLDT + MPMDT)
-
-    # 系统总质量
-    total_M = np.dot(o_b, mass[b_idx]) + np.sum(mass[c_idx])
-    ret = [P_ORS * D_t, P_ORS, MTTR, MTBF, MMDT, MLDT, Phi_k, total_M]
-    return ret
 
 
 def obj_fun_and_less_cons(x):
@@ -297,11 +267,12 @@ def obj_fun_and_less_cons(x):
 
     R_ts = cal_R_t(t_s, lambda_c, lambda_b, o_b, k_b)
     M_ts = cal_M_t(t_s, mu_c, mu_b, o_b)
-    Phi_k = 1 - cal_phi_or_T_k(1 - phi_k_c, lambda_c, 1 - phi_k_b, lambda_b, o_b, k_b)
+    denominator = _denominator(o_b, k_b)
+    Phi_k = 1 - cal_phi_or_T_k(1 - phi_k_c, lambda_c, 1 - phi_k_b, lambda_b, denominator)
     D_t = cal_D_t(R_ts, Phi_k, M_ts)
 
-    MTBF = cal_MTBF_S(lambda_c, lambda_b, o_b, k_b)
-    MTTR = cal_MTTR_S(mu_c, T_K_c, lambda_c, mu_b, T_K_b, lambda_b, o_b, k_b)
+    MTBF = cal_MTBF_S(lambda_c, lambda_b, denominator)
+    MTTR = cal_MTTR_S(mu_c, T_K_c, lambda_c, mu_b, T_K_b, lambda_b, denominator)
     ft = cal_f_cb(t_s, lambda_cb)
     ht = cal_ht(ft)
     MMDT = cal_MMDT_S(t_d, ft[c_idx], mu_c, ft[b_idx], mu_b, o_b)
@@ -312,114 +283,22 @@ def obj_fun_and_less_cons(x):
 
     # 系统总质量
     total_M = np.dot(o_b, mass[b_idx]) + np.sum(mass[c_idx])
-    ret = [-P_ORS * D_t, 0.85 - P_ORS, MTTR - 0.5, 300 - MTBF, MMDT - 5, MLDT - 100, 0.85 - Phi_k, total_M - 100]
+    ret = [-P_ORS * D_t, 0.85 - P_ORS, MTTR - 0.5, 600 - MTBF, MMDT - 5, MLDT - 100, 0.85 - Phi_k, total_M - 100]
     return ret
 
+
 def transformer(vals):
-    return [-vals[0], 0.85 - vals[1], 0.5+vals[2], 300-vals[3], 5+vals[4], 100+vals[5], 0.85-vals[6], 100+vals[7]]
-
-def obj_fun(x):
-    """
-    定义目标函数
-    :param x: 自变量 3+3*8 = 27维的向量，表示3个o_i, 8个m1_i, m2_i, m3_i
-    :return: 目标函数值
-    """
-    nb = 3
-    o_b = x[0:nb]
-    m1 = x[nb:nb+8]
-    m2 = x[nb+8:nb+16]
-    m3 = x[nb+16:nb+24]
-
-    R_ts = cal_R_t(t_s, lambda_c, lambda_b, o_b, k_b)
-    M_ts = cal_M_t(t_s, mu_c, mu_b, o_b)
-    Phi_k = 1 - cal_phi_or_T_k(1 - phi_k_c, lambda_c, 1 - phi_k_b, lambda_b, o_b, k_b)
-    D_t = cal_D_t(R_ts, Phi_k, M_ts)
-
-    MTBF = cal_MTBF_S(lambda_c, lambda_b, o_b, k_b)
-    MTTR = cal_MTTR_S(mu_c, T_K_c, lambda_c, mu_b, T_K_b, lambda_b, o_b, k_b)
-    ft = cal_f_cb(t_s, lambda_cb)
-    ht = cal_ht(ft)
-    MMDT = cal_MMDT_S(t_d, ft[c_idx], mu_c, ft[b_idx], mu_b, o_b)
-    MLDT = cal_MLDT_S(ht, t_0, lambda_cb, np.concatenate([o_cb_bound[c_idx], o_b]),
-                      m1, m2, m3, n_p, t_p1, t_p2)
-    MPMDT = cal_MPMDT_S()
-    P_ORS = t_d / (t_d + MMDT + MLDT + MPMDT)
-
-    # 系统总质量
-    total_M = np.dot(o_b, mass[b_idx]) + np.sum(mass[c_idx])
-    # ret = [P_ORS * D_t, P_ORS, MTTR, MTBF, MMDT, MLDT, Phi_k, total_M]
-    return -P_ORS * D_t
+    return [-vals[0], 0.85 - vals[1], 0.5+vals[2], 600-vals[3], 5+vals[4], 100+vals[5], 0.85-vals[6], 100+vals[7]]
 
 
-def con_por(x):
-    nb = 3
-    o_b = x[0:nb]
-    m1 = x[nb:nb+8]
-    m2 = x[nb+8:nb+16]
-    m3 = x[nb+16:nb+24]
-
-    ft = cal_f_cb(t_s, lambda_cb)
-    ht = cal_ht(ft)
-    MMDT = cal_MMDT_S(t_d, ft[c_idx], mu_c, ft[b_idx], mu_b, o_b)
-    MLDT = cal_MLDT_S(ht, t_0, lambda_cb, np.concatenate([o_cb_bound[c_idx], o_b]),
-                      m1, m2, m3, n_p, t_p1, t_p2)
-    MPMDT = cal_MPMDT_S()
-    P_ORS = t_d / (t_d + MMDT + MLDT + MPMDT)
-    return 0.85 - P_ORS
-
-def con_mttr(x):
-    nb = 3
-    o_b = x[0:nb]
-    MTTR = cal_MTTR_S(mu_c, T_K_c, lambda_c, mu_b, T_K_b, lambda_b, o_b, k_b)
-    return MTTR - 0.5
-
-def con_mtbf(x):
-    nb = 3
-    o_b = x[0:nb]
-    MTBF = cal_MTBF_S(lambda_c, lambda_b, o_b, k_b)
-    return 300 - MTBF
-
-def con_mmdt(x):
-    nb = 3
-    o_b = x[0:nb]
-    ft = cal_f_cb(t_s, lambda_cb)
-    MMDT = cal_MMDT_S(t_d, ft[c_idx], mu_c, ft[b_idx], mu_b, o_b)
-    return MMDT - 5
-
-def con_mldt(x):
-    nb = 3
-    o_b = x[0:nb]
-    m1 = x[nb:nb+8]
-    m2 = x[nb+8:nb+16]
-    m3 = x[nb+16:nb+24]
-    ft = cal_f_cb(t_s, lambda_cb)
-    ht = cal_ht(ft)
-    MLDT = cal_MLDT_S(ht, t_0, lambda_cb, np.concatenate([o_cb_bound[c_idx], o_b]),
-                      m1, m2, m3, n_p, t_p1, t_p2)
-    return MLDT - 100
-
-def con_phi(x):
-    nb = 3
-    o_b = x[0:nb]
-    Phi_k = 1 - cal_phi_or_T_k(1-phi_k_c, lambda_c, 1 - phi_k_b, lambda_b, o_b, k_b)
-    return 0.85 - Phi_k
-
-def con_mass(x):
-    nb = 3
-    o_b = x[0:nb]
-    total_M = np.dot(o_b, mass[b_idx]) + np.sum(mass[c_idx])
-    return total_M - 100
-
-less_cons = [con_mass, con_mldt, con_mmdt, con_mtbf, con_mttr, con_phi, con_por]
 lb = np.concatenate([np.ones(3), np.zeros(24)])
 ub = np.concatenate([o_b_bound, m1_bound, m2_bound, m3_bound])
 
+
 def _generator(init_val, bounds):
-    _valid = True
     _len = len(init_val)
     for i in range(_len):
         if init_val[i] > bounds[i]:
-            _valid = False
             return
 
     def _increase(cur_val):
@@ -429,32 +308,83 @@ def _generator(init_val, bounds):
                 return cur_val
             else:
                 cur_val[i] = 0
-        _valid = False
-    cur_val = int_val
-    while _valid:
+        return None
+    cur_val = init_val
+    while cur_val is not None:
         yield cur_val
         cur_val = _increase(cur_val)
 
 
-if __name__ == '__main__':
-    upper_bounds = np.concatenate([o_b_bound, m1_bound, m2_bound, m3_bound],)
+def main1():
+    # 查看各指标取值范围
+    upper_bounds = np.concatenate([o_b_bound, m1_bound, m2_bound, m3_bound])
     int_val = np.concatenate([[1, 1, 1], np.zeros(24, dtype=np.int32)])
     points = good_point_init(1000, int_val, upper_bounds)
     points = np.floor(points)
     points = points.astype(np.int32)
     data = []
     i = 0
+
     for p in points:
-        f_val = _check_obj_fun(p)
+        f_val = transformer(obj_fun_and_less_cons(p))
         i += 1
         print(i)
         data.append(f_val)
     import pandas as pd
+    pd.options.display.max_columns = None
     df_frame = pd.DataFrame(data)
     print(df_frame.describe())
     excel_writer = pd.ExcelWriter(r'./output/good_val.xlsx', engine="xlsxwriter")
     df_frame.to_excel(excel_writer)
     excel_writer.save()
 
+
+def main2():
+    upper_bounds = np.concatenate([o_b_bound, m1_bound-1, m2_bound-1])
+    int_val = np.concatenate([[1, 1, 1], np.zeros(16, dtype=np.int32)])
+    i = 0
+    points = []
+    fvals = []
+    cnt = 0
+    appendix = np.zeros(8, dtype=np.int32)
+    num_sample = 80
+    for point in _generator(int_val, upper_bounds):
+        points.append(point)
+        p = np.concatenate([point, appendix])
+        fval = transformer(obj_fun_and_less_cons(p))[0]
+        fvals.append(fval)
+        cnt += 1
+        if cnt % 1000 == 0:
+            print('已经处理{}个'.format(cnt))
+        if cnt >= num_sample * num_sample:
+            break
+
+    from mpl_toolkits.mplot3d import Axes3D
+    import matplotlib.pyplot as plt
+    from matplotlib import cm
+    fig = plt.figure()
+    ax = fig.gca(projection='3d')
+
+    X = np.arange(num_sample)
+    Y = np.arange(num_sample)
+    X, Y = np.meshgrid(X, Y)
+    X = np.reshape(X, [num_sample * num_sample])
+    Y = np.reshape(Y, [num_sample * num_sample])
+    # Z = np.reshape(fvals, [num_sample, num_sample])
+    surf = ax.scatter(X, Y, fvals)
+    ax.set_xlabel('i')
+    ax.set_ylabel('j')
+    ax.set_zlabel('E')
+    plt.show()
+
+
+
+
+
+
+
+if __name__ == '__main__':
+    # main1()
+    main2()
 
 

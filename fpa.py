@@ -3,7 +3,7 @@ import logging
 import matplotlib.pyplot as plt
 import os
 from utils import good_point_init, random_point_init, deb_feasible_compare
-from math import gamma, sin, pi
+from math import gamma, sin, pi, ceil
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s  %(filename)s : %(levelname)s  %(message)s',
@@ -233,18 +233,18 @@ class FlowerPollinationAlgorithm(object):
 
         # 目标函数值和约束值的变化
         f_and_cons_list = np.asarray(self.f_and_cons_list)
-        _min = np.min(f_and_cons_list, axis=0)
-        _max = np.max(f_and_cons_list, axis=0)
-        std_f_and_cons_list = (f_and_cons_list - _min) / (_max - _min)
-        fig, ax = plt.subplots()
         _, n = f_and_cons_list.shape
+        rows = ceil(n / 3)
+        fig, axes = plt.subplots(rows, 3)
+
         lines = []
         for i in range(n):
-            l, = ax.plot(std_f_and_cons_list[:, i])
-            lines.append(l)
+            r = i // 3
+            c = i % 3
+            l, = axes[r][c].plot(f_and_cons_list[:, i])
+            axes[r][c].legend(lines, f_and_cons_name[i])
+            axes[r][c].set_xlabel('t')
 
-        ax.legend(lines, f_and_cons_name)
-        ax.set_xlabel('t')
         plt.savefig(os.path.join(path, '{}_f_and_cons.jpg'.format(self.name)))
 
         _, axes = plt.subplots(3, 2, figsize=(10, 15))
