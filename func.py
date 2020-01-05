@@ -33,7 +33,7 @@ t_p1 = 80
 # 供应站到现场平均临时周转时间
 t_p2 = 500
 # 单元故障率
-lambda_cb = 1e-5 * np.asarray([120, 90, 30, 50, 50, 60, 40, 30])
+lambda_cb = 0.56 * 1e-5 * np.asarray([120, 90, 30, 50, 50, 60, 40, 30])
 # 单元拆装修复率
 mu_cb = 1 * np.asarray([2.50, 2.80, 3.33, 3.33, 3.80, 3.00, 3.60, 2.50])
 # 故障隔离率
@@ -372,8 +372,8 @@ def main2():
     Y = np.reshape(Y, [num_sample * num_sample])
     # Z = np.reshape(fvals, [num_sample, num_sample])
     surf = ax.scatter(X, Y, fvals)
-    ax.set_xlabel('i')
-    ax.set_ylabel('j')
+    ax.set_xlabel('x')
+    ax.set_ylabel('y')
     ax.set_zlabel('E')
     plt.show()
 

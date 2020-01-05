@@ -7,5 +7,5 @@ if __name__ == '__main__':
     fpa.train()
     print('目标函数值和约束值', fpa.f_and_cons_list[-1])
     print('最优解', fpa.x_best_list[-1])
-    fpa.save('./output', axis=[20, 24], axis_name=['m3_2', 'm3_6'],
+    fpa.save('./output', axis=[0, 1], axis_name=['o1', 'o2'],
              f_and_cons_name=['E', 'PORS', 'MTTR', 'MTBF', 'MMDT', 'MLDT', 'Phi_k', 'mass'])

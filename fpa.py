@@ -242,7 +242,7 @@ class FlowerPollinationAlgorithm(object):
             r = i // 3
             c = i % 3
             l, = axes[r][c].plot(f_and_cons_list[:, i])
-            axes[r][c].legend(lines, f_and_cons_name[i])
+            axes[r][c].legend(f_and_cons_name[i])
             axes[r][c].set_xlabel('t')
 
         plt.savefig(os.path.join(path, '{}_f_and_cons.jpg'.format(self.name)))
