@@ -371,13 +371,18 @@ def main2():
     X = np.reshape(X, [num_sample * num_sample])
     Y = np.reshape(Y, [num_sample * num_sample])
     # Z = np.reshape(fvals, [num_sample, num_sample])
-    surf = ax.scatter(X, Y, fvals)
+
+    fvals = np.asarray(fvals)
+    th = 0.95
+    idxs1 = fvals < th
+    idxs2 = fvals >= th
+    ax.scatter(X[idxs1], Y[idxs1], fvals[idxs1], c='b')
+    ax.scatter(X[idxs2], Y[idxs2], fvals[idxs2], c='r')
+
     ax.set_xlabel('x')
     ax.set_ylabel('y')
     ax.set_zlabel('E')
     plt.show()
-
-
 
 
 
